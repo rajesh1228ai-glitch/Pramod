@@ -18,14 +18,17 @@ class JiraClient:
         if not url:
             raise ValueError("Jira URL cannot be empty")
         
-        # Remove /browse/* from URL if present (common mistake)
+        # Remove /browse/*, /jira/software/projects, and other paths if present
         if "/browse/" in url:
             url = url.split("/browse/")[0]
+        if "/jira/" in url:
+            url = url.split("/jira/")[0]
         
         # Ensure URL starts with https://
         if not url.startswith("http"):
             url = "https://" + url
         
+        # Validate Jira Cloud URL format
         if not url.endswith(".atlassian.net"):
             raise ValueError(f"Invalid Jira Cloud URL. Expected URL like 'https://yourworkspace.atlassian.net', got: {url}")
         

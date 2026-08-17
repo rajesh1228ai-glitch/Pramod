@@ -45,31 +45,51 @@ def render() -> None:
 
     # Show available issues in sidebar
     with st.sidebar:
-        st.subheader("Available Issues")
-        try:
-            jira = JiraClient(config.get("jira_url", ""), config.get("jira_email", ""), config.get("jira_api_token", ""))
-            
-            # Extract project key if available
-            project_key = None
-            if "jira_url" in config:
-                # Try to extract project from URL or ask user
-                st.text_input("Project Key (optional, e.g., KAN):", key="project_key_input")
-                project_key = st.session_state.get("project_key_input", "").strip() or None
-            
-            if st.button("Search Issues"):
-                with st.spinner("Searching for issues..."):
-                    try:
-                        issues = jira.search_issues(project_key=project_key, limit=10)
+        st.subheader("Jira Projects & Issues")
+        st.write("Manage your Jira search")
+        
+        # Show available projects
+        if st.button("📂 Show Available Projects"):
+            try:
+                jira = JiraClient(config.get("jira_url", ""), config.get("jira_email", ""), config.get("jira_api_token", ""))
+                with st.spinner("Loading projects..."):
+                    projects = jira.list_projects()
+                    if projects:
+                        st.success(f"Found {len(projects)} projects:")
+                        for project in projects:
+                            st.write(f"🔑 **{project['key']}**: {project['name']}")
+                    else:
+                        st.info("No projects found. Check your Jira credentials.")
+            except Exception as e:
+                st.error(f"Failed to list projects: {str(e)}")
+        
+        st.divider()
+        st.subheader("Issue Search")
+        st.write("Search for issues in your Jira workspace")
+        
+        # Input for project or issue key
+        search_input = st.text_input(
+            "Project Key or Issue Key",
+            placeholder="e.g., KAN or KAN-150",
+            help="Enter project key (KAN) or issue key (KAN-150) to search"
+        )
+        
+        if st.button("🔍 Search Issues"):
+            if not search_input:
+                st.warning("Please enter a project or issue key")
+            else:
+                try:
+                    jira = JiraClient(config.get("jira_url", ""), config.get("jira_email", ""), config.get("jira_api_token", ""))
+                    with st.spinner("Searching for issues..."):
+                        issues = jira.search_issues(project_key=search_input, limit=10)
                         if issues:
                             st.success(f"Found {len(issues)} issues:")
                             for issue in issues:
-                                st.write(f"**{issue['key']}**: {issue['summary']}")
+                                st.write(f"📋 **{issue['key']}**: {issue['summary']}")
                         else:
-                            st.info("No issues found. Check your project key or credentials.")
-                    except Exception as e:
-                        st.error(f"Search failed: {str(e)}")
-        except Exception:
-            st.info("Configure Jira credentials in Settings to search issues")
+                            st.info("No issues found. Check your project key.")
+                except Exception as e:
+                    st.error(f"Search failed: {str(e)}")
 
     prompt_input = st.text_input("Message", key="prompt_input")
     submit = st.button("Send")

@@ -117,6 +117,35 @@ class JiraClient:
         except Exception as e:
             return False, f"✗ Error: {str(e)}"
 
+    def list_projects(self) -> list[dict[str, str]]:
+        """List all available projects in Jira workspace
+        
+        Returns:
+            List of projects with key and name
+        """
+        try:
+            url = f"{self.base_url}/rest/api/3/project"
+            response = requests.get(url, headers=self.auth_header, timeout=10)
+            
+            if response.status_code == 401:
+                raise RuntimeError("Authentication failed. Check your Jira credentials.")
+            elif response.status_code == 403:
+                raise RuntimeError("Access denied. Check if your API token has project listing permissions.")
+            
+            response.raise_for_status()
+            
+            if self._is_json(response):
+                projects = response.json() if isinstance(response.json(), list) else response.json().get("values", [])
+                return [
+                    {"key": project.get("key"), "name": project.get("name")}
+                    for project in projects
+                ]
+            return []
+        except requests.exceptions.HTTPError as e:
+            raise RuntimeError(f"Failed to list projects: HTTP {response.status_code}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to list projects: {str(e)}")
+
     def search_issues(self, project_key: str = None, limit: int = 10) -> list[dict[str, Any]]:
         """Search for issues in Jira
         

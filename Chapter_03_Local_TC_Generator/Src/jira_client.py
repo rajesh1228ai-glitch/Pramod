@@ -40,6 +40,11 @@ class JiraClient:
         return {"Authorization": f"Basic {encoded}", "Content-Type": "application/json"}
 
     def get_issue(self, issue_key: str) -> dict[str, Any]:
+        # Normalize issue key to uppercase
+        issue_key = issue_key.strip().upper()
+        if not issue_key:
+            raise ValueError("Issue key cannot be empty")
+        
         url = f"{self.base_url}/rest/api/3/issue/{quote_plus(issue_key)}"
         try:
             response = requests.get(url, headers=self.auth_header, params={"fields": "summary,description"}, timeout=10)
@@ -54,7 +59,13 @@ class JiraClient:
             elif response.status_code == 403:
                 raise RuntimeError("Access forbidden. Check if your API token has permission to access this issue.")
             elif response.status_code == 404:
-                raise RuntimeError(f"Issue {issue_key} not found in Jira.")
+                raise RuntimeError(
+                    f"Issue '{issue_key}' not found in Jira.\n"
+                    f"Please verify:\n"
+                    f"1. Issue key is correct (e.g., KAN-150)\n"
+                    f"2. Issue exists in your Jira workspace\n"
+                    f"3. Your API token has access to the issue"
+                )
             raise RuntimeError(f"Jira API error: {response.status_code} {response.reason}")
         
         if self._is_json(response):
@@ -105,6 +116,44 @@ class JiraClient:
             return False, f"✗ Cannot connect to {self.base_url}. Check if the URL is correct."
         except Exception as e:
             return False, f"✗ Error: {str(e)}"
+
+    def search_issues(self, project_key: str = None, limit: int = 10) -> list[dict[str, Any]]:
+        """Search for issues in Jira
+        
+        Args:
+            project_key: Optional project key to filter by (e.g., 'KAN')
+            limit: Maximum number of issues to return
+        
+        Returns:
+            List of issues with key and summary
+        """
+        try:
+            # Build JQL query
+            if project_key:
+                jql = f"project = {project_key.upper()}"
+            else:
+                jql = "ORDER BY updated DESC"
+            
+            url = f"{self.base_url}/rest/api/3/search"
+            params = {
+                "jql": jql,
+                "fields": "key,summary",
+                "maxResults": limit
+            }
+            
+            response = requests.get(url, headers=self.auth_header, params=params, timeout=10)
+            response.raise_for_status()
+            
+            if self._is_json(response):
+                data = response.json()
+                issues = data.get("issues", [])
+                return [
+                    {"key": issue.get("key"), "summary": issue.get("fields", {}).get("summary")}
+                    for issue in issues
+                ]
+            return []
+        except Exception as e:
+            raise RuntimeError(f"Failed to search issues: {str(e)}")
 
     def extract_issue_data(self, issue: dict[str, Any]) -> dict[str, str]:
         fields = issue.get("fields", {})

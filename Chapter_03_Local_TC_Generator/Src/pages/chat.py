@@ -43,6 +43,34 @@ def render() -> None:
     if "messages" not in st.session_state:
         st.session_state["messages"] = []
 
+    # Show available issues in sidebar
+    with st.sidebar:
+        st.subheader("Available Issues")
+        try:
+            jira = JiraClient(config.get("jira_url", ""), config.get("jira_email", ""), config.get("jira_api_token", ""))
+            
+            # Extract project key if available
+            project_key = None
+            if "jira_url" in config:
+                # Try to extract project from URL or ask user
+                st.text_input("Project Key (optional, e.g., KAN):", key="project_key_input")
+                project_key = st.session_state.get("project_key_input", "").strip() or None
+            
+            if st.button("Search Issues"):
+                with st.spinner("Searching for issues..."):
+                    try:
+                        issues = jira.search_issues(project_key=project_key, limit=10)
+                        if issues:
+                            st.success(f"Found {len(issues)} issues:")
+                            for issue in issues:
+                                st.write(f"**{issue['key']}**: {issue['summary']}")
+                        else:
+                            st.info("No issues found. Check your project key or credentials.")
+                    except Exception as e:
+                        st.error(f"Search failed: {str(e)}")
+        except Exception:
+            st.info("Configure Jira credentials in Settings to search issues")
+
     prompt_input = st.text_input("Message", key="prompt_input")
     submit = st.button("Send")
 

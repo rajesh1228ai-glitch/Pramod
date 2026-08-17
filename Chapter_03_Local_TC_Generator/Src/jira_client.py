@@ -121,17 +121,22 @@ class JiraClient:
         """Search for issues in Jira
         
         Args:
-            project_key: Optional project key to filter by (e.g., 'KAN')
+            project_key: Optional project key to filter by (e.g., 'KAN' or 'KAN-150' -> extracts 'KAN')
             limit: Maximum number of issues to return
         
         Returns:
             List of issues with key and summary
         """
+        response = None
         try:
-            # Build JQL query
+            # Extract project key if issue key was provided (e.g., "KAN-150" -> "KAN")
             if project_key:
-                jql = f"project = {project_key.upper()}"
+                project_key = project_key.strip().upper()
+                if "-" in project_key:
+                    project_key = project_key.split("-")[0]
+                jql = f"project = {project_key}"
             else:
+                # Get recent issues if no project specified
                 jql = "ORDER BY updated DESC"
             
             url = f"{self.base_url}/rest/api/3/search"
@@ -142,6 +147,27 @@ class JiraClient:
             }
             
             response = requests.get(url, headers=self.auth_header, params=params, timeout=10)
+            
+            # Handle specific error codes
+            if response.status_code == 400:
+                raise RuntimeError(
+                    f"Invalid JQL query '{jql}'. Please check:\n"
+                    f"1. Project key format (e.g., 'KAN' not 'KAN-150')\n"
+                    f"2. Project exists in your Jira workspace"
+                )
+            elif response.status_code == 401:
+                raise RuntimeError("Authentication failed. Check your Jira email and API token.")
+            elif response.status_code == 403:
+                raise RuntimeError("Access denied. Check if your API token has search permissions.")
+            elif response.status_code == 410:
+                raise RuntimeError(
+                    f"Resource not found (410 Gone). This might indicate:\n"
+                    f"1. Invalid project key '{project_key}'\n"
+                    f"2. Project was deleted or archived\n"
+                    f"3. API endpoint is not available\n"
+                    f"Please verify the project exists in Jira."
+                )
+            
             response.raise_for_status()
             
             if self._is_json(response):
@@ -152,6 +178,16 @@ class JiraClient:
                     for issue in issues
                 ]
             return []
+        except requests.exceptions.HTTPError as e:
+            if response and response.status_code == 401:
+                raise RuntimeError("Authentication failed. Check your Jira credentials.")
+            elif response and response.status_code == 403:
+                raise RuntimeError("Access denied. Check if your API token has search permissions.")
+            elif response:
+                raise RuntimeError(f"Jira search failed: HTTP {response.status_code} {response.reason}")
+            raise RuntimeError(f"Failed to search issues: {str(e)}")
+        except RuntimeError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Failed to search issues: {str(e)}")
 
